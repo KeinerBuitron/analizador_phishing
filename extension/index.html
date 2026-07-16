@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Analizador de Phishing</title>
+    <!-- Enlazamos el archivo de estilos -->
+    <link rel="stylesheet" href="media/style.css">
+</head>
+<body>
+    <div class="contenedor">
+        <h1>Analizador de Phishing</h1>
+        <p class="subtitle">Semillero de Investigación - Prototipo de Inferencia</p>
+        
+        <!-- Caja de texto para el correo -->
+        <textarea id="email-input" placeholder="Digite el contenido del correo a analizar aquí..."></textarea>
+        
+        <!-- Botón de acción -->
+        <button id="boton-analizar">Analizar Correo</button>
+
+        <!-- Contenedor del Medidor de Riesgo -->
+        <!-- class:para CSS y id:para JavaScript-->
+        <div class="contenedor-resultados" id="contenedor-resultados">
+            <h3>Resultado del Análisis</h3>
+            <div class="contenedor-medicion">
+                <div class="linea-medicion" id="linea-medicion"></div>
+            </div>
+            <p id="resultado-texto">Esperando correo para analizar...</p>
+        </div>
+    </div>
+
+    <!-- Enlazamos el cerebro de la interfaz -->
+    <script src="media/main.js"></script>
+</body>
+</html>
