@@ -1,10 +1,29 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import joblib
-from app.caracteristicas import extraccion_caracteristicas
 
-modelo = joblib.load("modelos/modelo_phishing.pkl") # Cargar el modelo pkl
+try:
+    from .caracteristicas import extraccion_caracteristicas
+except ImportError:
+    from app.caracteristicas import extraccion_caracteristicas
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_PATH = BASE_DIR / "modelos" / "modelo_phishing.pkl"
+
+modelo = joblib.load(MODEL_PATH)  # Cargar el modelo pkl
 app = FastAPI()
+
+# CONFIGURACIÓN DE CORS:
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite peticiones desde cualquier origen
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos los métodos (GET, POST)
+    allow_headers=["*"],  
+)
 
 class Carga_correo(BaseModel):
     texto: str
@@ -25,9 +44,9 @@ def predecir(correo: Carga_correo):
         caracteristicas["Porcentaje alarmista"]
     ]
 
-    predicion =modelo.predict([fila_numerica])[0]
+    predicion = modelo.predict([fila_numerica])[0]
     probabilidades = modelo.predict_proba([fila_numerica])[0]
-    probabilidad_phishing = probabilidades[1]  # Probabilidad de que sea phishing
+    probabilidad_phishing = probabilidades[1]  
 
     return {
         "es_phishing": int(predicion),

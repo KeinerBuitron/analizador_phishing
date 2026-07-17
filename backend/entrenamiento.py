@@ -1,7 +1,15 @@
+from pathlib import Path
+
 import joblib
 from sklearn.ensemble import RandomForestClassifier
-# Se importa la clase de extraccion de caracteristicas
-from app.caracteristicas import extraccion_caracteristicas
+
+try:
+    from .app.caracteristicas import extraccion_caracteristicas
+except ImportError:
+    from app.caracteristicas import extraccion_caracteristicas
+
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "modelos" / "modelo_phishing.pkl"
 
 # PASO 1: Correos de ejemplo con respuestas conocidas ---
 correos_entrenamiento = [
@@ -36,5 +44,6 @@ modelo.fit(X, Y)
 print("El modelo ha sido entrenado con exito")
 
 # PASO 4: guardar el modelo en un archivo fisico 
-joblib.dump(modelo, "modelos/modelo_phishing.pkl")
-print("Modelo guardado como 'modelo_phishing.pkl'")
+MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+joblib.dump(modelo, MODEL_PATH)
+print(f"Modelo guardado como '{MODEL_PATH}'")

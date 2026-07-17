@@ -5,7 +5,8 @@ const lineaMedicion = document.getElementById('linea-medicion');
 const resultadoTexto = document.getElementById('resultado-texto');
 
 // 2. Escuchamos activamente cuando el usuario haga clic en el botón
-botonAnalizar.addEventListener('click', () => {
+// NOTA: Agregamos "async" antes de la función para poder usar "await" dentro
+botonAnalizar.addEventListener('click', async () => {
     const textoCorreo = emailInput.value.trim();
 
     // Validación rápida: si no hay texto, avisamos al usuario
@@ -16,41 +17,63 @@ botonAnalizar.addEventListener('click', () => {
         return;
     }
 
-    // Cambiamos el estado del botón mientras se "procesa" el correo
+    // Cambiamos el estado del botón mientras se procesa la petición real
     botonAnalizar.disabled = true;
     botonAnalizar.textContent = "Analizando...";
     resultadoTexto.textContent = "Procesando el texto con Random Forest Classifier...";
 
-    // 3. SIMULACIÓN DE RESPUESTA (Prueba en navegador)
-    // Simulamos un retraso de 1 segundo (como si fuera una petición real a Python)
-    setTimeout(() => {
-        // Generamos un porcentaje aleatorio para probar cómo se ve la animación
-        const probabilidadSimulada = Math.floor(Math.random() * 101); // Número entre 0 y 100
-        
-        actualizarInterfaz(probabilidadSimulada);
+    try {
+        // 3. PETICIÓN REAL A TU BACKEND FASTAPI
+        // Enviamos una petición POST al endpoint '/prediccion'
+        const respuesta = await fetch('http://127.0.0.1:8000/prediccion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                texto: textoCorreo // Enviamos el JSON que tu modelo "Carga_correo" espera
+            })
+        });
 
-        // Reactivamos el botón
-        btnAnalizar.disabled = false;
-        btnAnalizar.textContent = "Analizar Correo";
-    }, 1000);
+        // Verificamos si la respuesta de la red fue exitosa (código 200)
+        if (!respuesta.ok) {
+            throw new Error('Error en la respuesta del servidor de FastAPI');
+        }
+
+        // Convertimos la respuesta cruda en un objeto JSON de JavaScript
+        const datos = await respuesta.json();
+
+        // 4. PROCESAR LOS DATOS DE MACHINE LEARNING
+        // Tu backend devuelve "probabilidad_phishing" (un decimal entre 0.0 y 1.0)
+        // Multiplicamos por 100 para convertirlo en un porcentaje entero (0 - 100)
+        const porcentajeReal = Math.round(datos.probabilidad_phishing * 100);
+
+        // Actualizamos la interfaz con la predicción del modelo
+        actualizarInterfaz(porcentajeReal);
+
+    } catch (error) {
+        // En caso de que FastAPI esté apagado o haya un error de red
+        console.error("Error al conectar con la API:", error);
+        resultadoTexto.innerHTML = `<strong>⚠️ Error de conexión:</strong> No se pudo conectar con el servidor de análisis. Asegúrate de que Python esté corriendo.`;
+        lineaMedicion.style.width = "0%";
+    } finally {
+        // Reactivamos el botón al terminar (ya sea con éxito o error)
+        botonAnalizar.disabled = false;
+        botonAnalizar.textContent = "Analizar Correo";
+    }
 });
 
-// 4. Función para actualizar la barra y los colores dinámicamente
+// 4. Función para actualizar la barra y los colores dinámicamente (Se mantiene igual)
 function actualizarInterfaz(porcentaje) {
-    // Ajustamos el ancho de la barra
     lineaMedicion.style.width = `${porcentaje}%`;
 
-    // Cambiamos el color de fondo inyectando la variable CSS correspondiente
     if (porcentaje < 30) {
-        // Riesgo Bajo -> Llama a la variable verde
         lineaMedicion.style.backgroundColor = "var(--verde)"; 
         resultadoTexto.innerHTML = `<strong>Seguro (${porcentaje}%)</strong>: No se detectaron anomalías severas.`;
     } else if (porcentaje >= 30 && porcentaje < 70) {
-        // Riesgo Medio -> Llama a la variable amarilla
         lineaMedicion.style.backgroundColor = "var(--amarillo)"; 
         resultadoTexto.innerHTML = `<strong>Sospechoso (${porcentaje}%)</strong>: Revisa con atención los remitentes.`;
     } else {
-        // Riesgo Alto -> Llama a la variable roja
         lineaMedicion.style.backgroundColor = "var(--rojo)"; 
         resultadoTexto.innerHTML = `<strong>⚠️ ALERTA DE PHISHING (${porcentaje}%)</strong>: Patrones de fraude detectados.`;
     }
