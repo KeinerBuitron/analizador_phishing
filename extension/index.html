@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analizador de Phishing</title>
     <!-- Enlazamos el archivo de estilos -->
     <link rel="stylesheet" href="media/style.css">
@@ -9,23 +10,64 @@
 <body>
     <div class="contenedor">
         <h1>Analizador de Phishing</h1>
-        <p class="subtitle">Semillero de Investigación - Prototipo de Inferencia</p>
-        
-        <!-- Caja de texto para el correo -->
-        <textarea id="email-input" placeholder="Digite el contenido del correo a analizar aquí..."></textarea>
-        
-        <!-- Botón de acción -->
-        <button id="boton-analizar">Analizar Correo</button>
+        <p class="subtitle">Ciberseguridad - Machine Learning</p>
 
-        <!-- Contenedor del Medidor de Riesgo -->
-        <!-- class:para CSS y id:para JavaScript-->
-        <div class="contenedor-resultados" id="contenedor-resultados">
-            <h3>Resultado del Análisis</h3>
+        
+        <!-- SECCIÓN 1: ENTRADA DEL CORREO -->
+        <section class="seccion-modulo">
+            <h3>1. INGRESE EL CONTENIDO DEL CORREO A ANALIZAR</h3>
+            <textarea id="email-input" placeholder="Pegue aquí el texto plano del correo o las cabeceras completas sospechosas..."></textarea>
+            
+            <div class="grupo-botones">
+                <button id="boton-analizar" class="btn-principal">Analizar Correo</button>
+                <button id="boton-limpiar" class="btn-secundario">Limpiar</button>
+            </div>
+        </section>
+
+        <!-- SECCIÓN 2: REPORTE DE ANÁLISIS DE RIESGO (Oculto por defecto hasta analizar) -->
+        <section class="seccion-modulo" id="contenedor-resultados" style="display: none;">
+            <h3>2. REPORTE DE ANÁLISIS DE RIESGO</h3>
+            <p class="texto-riesgo">Riesgo Calculado: <strong id="porcentaje-texto">0%</strong></p>
+            
+            <!-- Barra de medición -->
             <div class="contenedor-medicion">
                 <div class="linea-medicion" id="linea-medicion"></div>
             </div>
-            <p id="resultado-texto">Esperando correo para analizar...</p>
-        </div>
+
+            <!-- Badge de estado (SEGURO / SOSPECHOSO / PHISHING) -->
+            <div style="margin-top: 15px;">
+                <span id="badge-estado" class="badge">SEGURO</span>
+            </div>
+
+            <p id="resultado-texto" style="margin-top: 15px;">Esperando correo para analizar...</p>
+
+            <!-- Retroalimentación Humana (Human-in-the-Loop) -->
+            <div class="seccion-feedback" style="margin-top: 25px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 15px;">
+                <h4>¿La clasificación del modelo fue correcta?</h4>
+                <p class="subtitle" style="font-size: 0.85rem; margin-bottom: 12px;">
+                    Tu retroalimentación entrena el modelo local a través del aprendizaje continuo.
+                </p>
+                
+                <div class="grupo-botones-feedback" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-correcta" class="btn-feedback verde">✓ Predicción Correcta</button>
+                    <button id="btn-falso-seguro" class="btn-feedback rojo">⚠️ Es Phishing (Falso Seguro)</button>
+                    <button id="btn-falso-alarma" class="btn-feedback azul">🛡️ Es Seguro (Falso Alarma)</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECCIÓN 3: MÓDULO DE APRENDIZAJE CONTINUO -->
+        <section class="seccion-modulo" style="margin-top: 20px;">
+            <h3>3. MÓDULO DE APRENDIZAJE CONTINUO</h3>
+            <p class="subtitle" style="text-transform: uppercase; letter-spacing: 1px;">Feedback Recolectado</p>
+            
+            <h2 id="feedback-count" style="font-size: 2.8rem; color: #6366f1; margin: 10px 0;">0</h2>
+            <p class="subtitle">(Mínimo 5 muestras para re-entrenar)</p>
+            
+            <button id="btn-retrain" class="btn-advertencia" disabled style="opacity: 0.5; cursor: not-allowed; margin-top: 15px;">
+                🔄 Disparar Re-entrenamiento
+            </button>
+        </section>
     </div>
 
     <!-- Enlazamos el cerebro de la interfaz -->
