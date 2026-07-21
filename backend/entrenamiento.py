@@ -9,7 +9,8 @@ except ImportError:
     from app.caracteristicas import extraccion_caracteristicas
 
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "modelos" / "modelo_phishing.pkl"
+# CAMBIO: Unificado de 'modelos' a 'models' para coincidir con la ruta cargada por la API
+MODEL_PATH = BASE_DIR / "models" / "modelo_phishing.pkl"
 
 # PASO 1: Correos de ejemplo con respuestas conocidas ---
 correos_entrenamiento = [

@@ -1,131 +1,118 @@
-from pathlib import Path
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import joblib
+from typing import Optional
 
-try:
-    from .caracteristicas import extraccion_caracteristicas
-except ImportError:
-    from app.caracteristicas import extraccion_caracteristicas
+# Importaciones de los módulos internos
+from app.database import init_db, guardar_feedback_db, obtener_todo_el_feedback
+from app.caracteristicas import extraccion_caracteristicas
+from app.modelo import predecir_correo, reentrenar_con_datos
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = BASE_DIR / "models" / "modelo_phishing.pkl"
+app = FastAPI(title="API Analizador de Phishing", version="1.0")
 
-modelo = joblib.load(MODEL_PATH)  # Cargar el modelo pkl
-app = FastAPI()
-
-# CONFIGURACIÓN DE CORS:
+# Permitir peticiones desde la extensión / frontend (CORS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite peticiones desde cualquier origen
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos los métodos (GET, POST)
-    allow_headers=["*"],  
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# --- 1. VARIABLES GLOBALES DE CONTROL (AÑADE ESTAS LÍNEAS ARRIBA) ---
-nuevas_muestras = []  # Aquí se acumularán los vectores para el re-entrenamiento
-ultima_fila_analizada = None  # Almacena temporalmente la última fila_numerica
-ultima_predicion_modelo = None  # Almacena temporalmente el resultado (0 o 1)
+# Inicializar la tabla de la base de datos SQLite al arrancar
+init_db()
 
-class Carga_correo(BaseModel):
+# Variables en memoria para asociar el último análisis con el feedback recibido
+ultima_fila_analizada = None
+ultima_predicion_modelo = None
+
+
+# Modelos Pydantic para validar entradas JSON
+class CargaCorreo(BaseModel):
     texto: str
 
 class CargaFeedback(BaseModel):
-    tipo_feedback: str
+    tipo_feedback: str  # "correcta", "falso_seguro", "falso_alarma"
 
-@app.get("/", tags=['Home'])
-def home():
-    return "Bienvenido a mi API de analizador de phishing"
 
-@app.post("/prediccion", tags=['Prediccion'])
-def predecir(correo: Carga_correo):
-    # <-- 2. INDISPENSABLE: Declarar global para guardar en la caché real
+@app.get("/")
+def inicio():
+    return {"status": "ok", "mensaje": "API de Detección de Phishing activa"}
+
+
+@app.post("/prediccion", tags=['Predicción'])
+def predecir(correo: CargaCorreo):
     global ultima_fila_analizada, ultima_predicion_modelo
+
+    if not correo.texto.strip():
+        raise HTTPException(status_code=400, detail="El texto del correo no puede estar vacío.")
+
+    # 1. Extraer características
     caracteristicas = extraccion_caracteristicas(correo.texto)
+    fila_numerica = list(caracteristicas.values())
 
-    fila_numerica = [
-        caracteristicas["Palabras sospechosas"],
-        caracteristicas["Signos de exclamación o interrogación"],
-        caracteristicas["Enlaces"],
-        caracteristicas["Direcciones IP"],
-        caracteristicas["Porcentaje alarmista"]
-    ]
+    # 2. Obtener predicción del modelo
+    try:
+        prediccion, probabilidad = predecir_correo(fila_numerica)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en el modelo: {str(e)}")
 
-    predicion = modelo.predict([fila_numerica])[0]
-    probabilidades = modelo.predict_proba([fila_numerica])[0]
-    probabilidad_phishing = probabilidades[1]  
-
-    # --- AQUÍ GUARDAMOS EN LA CACHÉ ANTES DE RETORNAR ---
+    # 3. Guardar en memoria para el endpoint de feedback
     ultima_fila_analizada = fila_numerica
-    ultima_predicion_modelo = int(predicion)
-    
+    ultima_predicion_modelo = prediccion
+
     return {
-        "es_phishing": int(predicion),
-        "probabilidad_phishing": float(probabilidad_phishing),
+        "es_phishing": prediccion,
+        "probabilidad_phishing": probabilidad,
         "caracteristicas_extraidas": caracteristicas
     }
 
-# --- 3. ENDPOINT PARA RECIBIR LA CALIFICACIÓN DEL USUARIO ---
-@app.post("/feedback", tags=['Prediccion'])
-def recibir_feedback(feedback: CargaFeedback):
-    global ultima_fila_analizada, ultima_predicion_modelo, nuevas_muestras
-    
-    # Si el usuario presiona un botón sin haber analizado un correo antes, da error
+
+@app.post("/feedback", tags=['Feedback'])
+def registrar_feedback(payload: CargaFeedback):
+    global ultima_fila_analizada, ultima_predicion_modelo
+
     if ultima_fila_analizada is None:
-        raise HTTPException(status_code=400, detail="No hay análisis activo para calificar.")
-        
-    # Por defecto, asumimos que el modelo acertó (0 o 1)
-    etiqueta_real = ultima_predicion_modelo
-    
-    # Si el usuario corrige al modelo, cambiamos la etiqueta de forma manual:
-    if feedback.tipo_feedback == "falso_seguro":
-        etiqueta_real = 1  # El modelo dijo Seguro (0), pero el humano dice que ES Phishing (1)
-    elif feedback.tipo_feedback == "falso_alarma":
-        etiqueta_real = 0  # El modelo dijo Phishing (1), pero el humano dice que ES Seguro (0)
-        
-    # Guardamos el vector numérico estructurado junto a su etiqueta real corregida
-    nuevas_muestras.append({
-        "x": ultima_fila_analizada,
-        "y": etiqueta_real
-    })
-    
-    # Limpiamos la caché para quedar listos para el siguiente correo
-    ultima_fila_analizada = None
-    ultima_predicion_modelo = None
-    
+        raise HTTPException(
+            status_code=400, 
+            detail="No hay ningún correo analizado recientemente para asociar el feedback."
+        )
+
+    # Determinar la etiqueta real corregida por el usuario
+    # 1 = Phishing, 0 = Seguro
+    tipo = payload.tipo_feedback
+    if tipo == "correcta":
+        etiqueta_real = ultima_predicion_modelo
+    elif tipo == "falso_seguro":
+        etiqueta_real = 1  # Realmente era Phishing
+    elif tipo == "falso_alarma":
+        etiqueta_real = 0  # Realmente era Seguro
+    else:
+        raise HTTPException(status_code=400, detail="Tipo de feedback no válido.")
+
+    # Guardar en SQLite
+    total_registros = guardar_feedback_db(ultima_fila_analizada, etiqueta_real)
+
     return {
         "status": "success",
-        "total_feedback": len(nuevas_muestras) # Le avisa al frontend cuántas van (1, 2, 3...)
+        "mensaje": "Feedback guardado exitosamente en la base de datos.",
+        "total_feedback_acumulado": total_registros
     }
 
 
-# --- 4. ENDPOINT PARA RE-ENTRENAR EL MODELO ---
-@app.post("/reentrenar", tags=['Prediccion'])
-def reentrenar_modelo():
-    global modelo, nuevas_muestras
-    
-    if len(nuevas_muestras) < 5:
-        return {"status": "error", "message": "Faltan muestras para iniciar el re-entrenamiento."}
-        
-    try:
-        # Separamos los datos acumulados en vectores X (características) e y (etiquetas)
-        X_nuevas = [muestra["x"] for muestra in nuevas_muestras]
-        y_nuevas = [muestra["y"] for muestra in nuevas_muestras]
-        
-        # Ajustamos el Random Forest con los nuevos patrones analizados
-        modelo.fit(X_nuevas, y_nuevas)
-        
-        # Sobreescribimos el archivo binario para guardar el conocimiento permanentemente
-        joblib.dump(modelo, MODEL_PATH)
-        
-        cantidad_procesada = len(nuevas_muestras)
-        nuevas_muestras = [] # Reseteamos la lista global a cero
-        
-        return {
-            "status": "success",
-            "message": f"Modelo re-entrenado con éxito utilizando {cantidad_procesada} muestras calificadas."
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+@app.post("/reentrenar", tags=['Re-entrenamiento'])
+def reentrenar():
+    # 1. Consultar todos los registros guardados en SQLite
+    filas_db = obtener_todo_el_feedback()
+
+    # 2. Ejecutar re-entrenamiento y validación de clases
+    exito, mensaje = reentrenar_con_datos(filas_db)
+
+    if not exito:
+        raise HTTPException(status_code=400, detail=mensaje)
+
+    return {
+        "status": "success",
+        "mensaje": mensaje,
+        "muestras_usadas": len(filas_db)
+    }
