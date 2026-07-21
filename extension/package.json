@@ -1,0 +1,25 @@
+{
+  "name": "analizador-phishing",
+  "displayName": "Analizador de Phishing ML",
+  "description": "Extensión de detección de phishing y aprendizaje continuo para VS Code",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:analizadorPhishing.start"
+  ],
+  "//main": "CAMBIO: Se modificó de './extension/extension.js' a './extension.js' porque el package.json está dentro de la carpeta extension.",
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "analizadorPhishing.start",
+        "title": "Phishing: Abrir Analizador de Correos"
+      }
+    ]
+  }
+}
