@@ -1,196 +1,315 @@
-// 1. Capturamos los elementos de la interfaz usando sus IDs de HTML
-const emailInput = document.getElementById('email-input');
-const botonAnalizar = document.getElementById('boton-analizar');
-const botonLimpiar = document.getElementById('boton-limpiar');
-const contenedorResultados = document.getElementById('contenedor-resultados');
-const lineaMedicion = document.getElementById('linea-medicion');
-const resultadoTexto = document.getElementById('resultado-texto');
-const porcentajeTexto = document.getElementById('porcentaje-texto');
-const badgeEstado = document.getElementById('badge-estado');
-
-// Captura de los nuevos botones de retroalimentación
-const btnCorrecta = document.getElementById('btn-correcta');
-const btnFalsoSeguro = document.getElementById('btn-falso-seguro');
-const btnFalsoAlarma = document.getElementById('btn-falso-alarma');
-
-// Captura de elementos del Módulo de Aprendizaje Continuo
-const feedbackCount = document.getElementById('feedback-count');
-const btnRetrain = document.getElementById('btn-retrain');
-
-// 2. Escuchamos activamente cuando el usuario haga clic en el botón Analizar
-botonAnalizar.addEventListener('click', async () => {
-    const textoCorreo = emailInput.value.trim();
-
-    // Validación rápida: si no hay texto, avisamos al usuario
-    if (textoCorreo === "") {
-        resultadoTexto.textContent = "⚠️ Por favor, escribe o pega un correo para analizar.";
-        lineaMedicion.style.width = "0%";
-        lineaMedicion.style.backgroundColor = "var(--accent-indigo)";
-        return;
-    }
-
-    // Cambiamos el estado del botón mientras se procesa la petición real
-    botonAnalizar.disabled = true;
-    botonAnalizar.textContent = "Analizando...";
-    resultadoTexto.textContent = "Procesando el texto con Random Forest Classifier...";
-
-    try {
-        // 3. PETICIÓN REAL A TU BACKEND FASTAPI
-        const respuesta = await fetch('http://127.0.0.1:8000/prediccion', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                texto: textoCorreo
-            })
-        });
-
-        if (!respuesta.ok) {
-            throw new Error('Error en la respuesta del servidor de FastAPI');
-        }
-
-        const datos = await respuesta.json();
-
-        // 4. PROCESAR LOS DATOS DE MACHINE LEARNING
-        const porcentajeReal = Math.round(datos.probabilidad_phishing * 100);
-
-        // Mostramos el contenedor de resultados y actualizamos la UI
-        if (contenedorResultados) contenedorResultados.style.display = "block";
-        actualizarInterfaz(porcentajeReal);
-
-        // Habilitamos los tres botones de retroalimentación para este correo
-        toggleBotonesFeedback(false);
-
-    } catch (error) {
-        console.error("Error al conectar con la API:", error);
-        resultadoTexto.innerHTML = `<strong>⚠️ Error de conexión:</strong> No se pudo conectar con el servidor de análisis. Asegúrate de que Python esté corriendo.`;
-        lineaMedicion.style.width = "0%";
-    } finally {
-        botonAnalizar.disabled = false;
-        botonAnalizar.textContent = "Analizar Correo";
-    }
-});
-
-// 3. Función para actualizar la barra, textos y colores
-function actualizarInterfaz(porcentaje) {
-    lineaMedicion.style.width = `${porcentaje}%`;
-    if (porcentajeTexto) porcentajeTexto.textContent = `${porcentaje}%`;
-
-    if (porcentaje < 30) {
-        lineaMedicion.style.backgroundColor = "var(--verde)"; 
-        resultadoTexto.innerHTML = `<strong>Seguro (${porcentaje}%)</strong>: No se detectaron anomalías severas.`;
-        if (badgeEstado) {
-            badgeEstado.textContent = "SEGURO";
-            badgeEstado.style.backgroundColor = "#10b981";
-        }
-    } else if (porcentaje >= 30 && porcentaje < 70) {
-        lineaMedicion.style.backgroundColor = "var(--amarillo)"; 
-        resultadoTexto.innerHTML = `<strong>Sospechoso (${porcentaje}%)</strong>: Revisa con atención los remitentes.`;
-        if (badgeEstado) {
-            badgeEstado.textContent = "SOSPECHOSO";
-            badgeEstado.style.backgroundColor = "#f59e0b";
-        }
-    } else {
-        lineaMedicion.style.backgroundColor = "var(--rojo)"; 
-        resultadoTexto.innerHTML = `<strong>⚠️ ALERTA DE PHISHING (${porcentaje}%)</strong>: Patrones de fraude detectados.`;
-        if (badgeEstado) {
-            badgeEstado.textContent = "ALERTA DE PHISHING";
-            badgeEstado.style.backgroundColor = "#ef4444";
-        }
-    }
+// Adquirir la API de VS Code
+let vscode;
+try {
+    vscode = acquireVsCodeApi();
+} catch (e) {
+    console.log("VS Code API ya estaba adquirida.");
 }
 
-// 4. PROCESAR RETROALIMENTACIÓN HUMANA (FEEDBACK)
-async function enviarFeedback(tipoFeedback) {
-    try {
-        const respuesta = await fetch('http://127.0.0.1:8000/feedback', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tipo_feedback: tipoFeedback })
-        });
+document.addEventListener('DOMContentLoaded', () => {
 
-        const datos = await respuesta.json();
+    // --- CAPTURA DE ELEMENTOS ---
+    const emailInput = document.getElementById('email-input');
+    const botonAnalizar = document.getElementById('boton-analizar');
+    const botonLimpiar = document.getElementById('boton-limpiar');
+    const contenedorResultados = document.getElementById('contenedor-resultados');
+    const lineaMedicion = document.getElementById('linea-medicion');
+    const resultadoTexto = document.getElementById('resultado-texto');
+    const badgeEstado = document.getElementById('badge-estado');
+    const porcentajeTextoSuperior = document.getElementById('porcentaje-texto');
 
-        if (datos.status === "success") {
-            // Actualizamos el número de muestras recolectadas
-            feedbackCount.textContent = datos.total_feedback;
+    // Botones de Feedback y Re-entrenamiento
+    const btnCorrecta = document.getElementById('btn-correcta');
+    const btnFalsoSeguro = document.getElementById('btn-falso-seguro');
+    const btnFalsoAlarma = document.getElementById('btn-falso-alarma');
+    const feedbackCount = document.getElementById('feedback-count');
+    const btnRetrain = document.getElementById('btn-retrain');
 
-            // Bloqueamos los botones de calificación para no enviar doble feedback del mismo correo
-            toggleBotonesFeedback(true);
+    // Al arrancar en navegador, consultar si hay feedback previo registrado en el backend
+    consultarFeedbackInicial();
 
-            // Si llegamos a 5 muestras, activamos el botón de re-entrenamiento
-            if (datos.total_feedback >= 5) {
-                btnRetrain.disabled = false;
-                btnRetrain.style.opacity = "1";
-                btnRetrain.style.cursor = "pointer";
+    // --- 1. EVENTO BOTÓN ANALIZAR ---
+    if (botonAnalizar) {
+        botonAnalizar.addEventListener('click', () => {
+            const textoCorreo = emailInput ? emailInput.value.trim() : "";
+
+            if (!textoCorreo) {
+                if (resultadoTexto) {
+                    resultadoTexto.innerHTML = `<span style="color:#f39c12;">⚠️ Por favor, ingresa un correo para analizar.</span>`;
+                }
+                if (contenedorResultados) contenedorResultados.style.display = "block";
+                return;
             }
-        }
-    } catch (error) {
-        console.error("Error al enviar el feedback:", error);
+
+            botonAnalizar.disabled = true;
+            botonAnalizar.textContent = "Analizando...";
+
+            // CAMBIO: Si estamos en VS Code enviamos mensaje a la extensión, si no, hacemos fetch directo a la API
+            if (vscode) {
+                vscode.postMessage({
+                    command: 'analizarCorreo',
+                    texto: textoCorreo
+                });
+            } else {
+                /* CAMBIO MODO PÁGINA WEB: Inferencia directa vía API HTTP */
+                analizarCorreoDirecto(textoCorreo);
+            }
+        });
     }
-}
 
-// Escuchadores de eventos para los tres botones de calificación
-if (btnCorrecta) btnCorrecta.addEventListener('click', () => enviarFeedback('correcta'));
-if (btnFalsoSeguro) btnFalsoSeguro.addEventListener('click', () => enviarFeedback('falso_seguro'));
-if (btnFalsoAlarma) btnFalsoAlarma.addEventListener('click', () => enviarFeedback('falso_alarma'));
+    if (botonLimpiar) {
+        botonLimpiar.addEventListener('click', () => {
+            // Limpiar caja de texto
+            if (emailInput) emailInput.value = "";
 
-function toggleBotonesFeedback(deshabilitar) {
-    if (btnCorrecta) btnCorrecta.disabled = deshabilitar;
-    if (btnFalsoSeguro) btnFalsoSeguro.disabled = deshabilitar;
-    if (btnFalsoAlarma) btnFalsoAlarma.disabled = deshabilitar;
+            // Reiniciar barra y colores
+            if (lineaMedicion) {
+                lineaMedicion.style.width = "0%";
+                lineaMedicion.style.backgroundColor = "#10b981"; // Verde por defecto
+            }
 
-    const opacidad = deshabilitar ? "0.5" : "1";
-    if (btnCorrecta) btnCorrecta.style.opacity = opacidad;
-    if (btnFalsoSeguro) btnFalsoSeguro.style.opacity = opacidad;
-    if (btnFalsoAlarma) btnFalsoAlarma.style.opacity = opacidad;
-}
+            // Reiniciar textos
+            if (porcentajeTextoSuperior) porcentajeTextoSuperior.textContent = "0%";
+            if (resultadoTexto) resultadoTexto.innerHTML = "Riesgo Calculado: 0%";
+            if (badgeEstado) {
+                badgeEstado.textContent = "SEGURO";
+                badgeEstado.style.backgroundColor = "#10b981";
+            }
 
-// 5. DISPARAR RE-ENTRENAMIENTO INCREMENTAL
-if (btnRetrain) {
-    btnRetrain.addEventListener('click', async () => {
-        btnRetrain.disabled = true;
-        btnRetrain.textContent = "Re-entrenando Modelo...";
+            // Ocultar contenedor de resultados
+            if (contenedorResultados) contenedorResultados.style.display = "none";
+        });
+    }
 
+    // --- 3. EVENTOS FEEDBACK ---
+    if (btnCorrecta) btnCorrecta.addEventListener('click', () => enviarFeedback('correcta'));
+    if (btnFalsoSeguro) btnFalsoSeguro.addEventListener('click', () => enviarFeedback('falso_seguro'));
+    if (btnFalsoAlarma) btnFalsoAlarma.addEventListener('click', () => enviarFeedback('falso_alarma'));
+
+    function enviarFeedback(tipo) {
+        // CAMBIO: Si estamos en VS Code enviamos por mensaje, si no, directo a la API
+        if (vscode) {
+            vscode.postMessage({
+                command: 'enviarFeedback',
+                tipo_feedback: tipo
+            });
+        } else {
+            /* CAMBIO MODO PÁGINA WEB: Envío de feedback directo vía API HTTP */
+            enviarFeedbackDirecto(tipo);
+        }
+    }
+
+    // --- 4. EVENTO RE-ENTRENAR ---
+    if (btnRetrain) {
+        btnRetrain.addEventListener('click', () => {
+            btnRetrain.disabled = true;
+            btnRetrain.textContent = "Re-entrenando...";
+            if (vscode) {
+                vscode.postMessage({ command: 'reentrenar' });
+            } else {
+                /* CAMBIO MODO PÁGINA WEB: Disparar re-entrenamiento directo vía API HTTP */
+                reentrenarDirecto();
+            }
+        });
+    }
+
+    // --- 5. RESPUESTAS DESDE EXTENSION.JS ---
+    window.addEventListener('message', event => {
+        const message = event.data;
+
+        switch (message.command) {
+            case 'resultadoAnalisis':
+                actualizarUIAnalisis(message.data);
+                break;
+
+            case 'resultadoFeedback':
+                actualizarUIFeedback(message.data);
+                break;
+
+            case 'resultadoReentrenamiento':
+                actualizarUIReentrenamiento(message.data);
+                break;
+
+            case 'error':
+                mostrarErrorAnalisis(message.message);
+                break;
+        }
+    });
+
+    // --- FUNCIONES DE FALLBACK PARA COMUNICACIÓN DIRECTA CON LA API (MODO WEB) ---
+    
+    async function analizarCorreoDirecto(texto) {
         try {
-            const respuesta = await fetch('http://127.0.0.1:8000/reentrenar', {
+            const response = await fetch('http://127.0.0.1:8000/prediccion', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ texto: texto })
             });
 
-            const datos = await respuesta.json();
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || "Error en el servidor.");
+            }
 
-            if (datos.status === "success") {
-                alert(`✨ ${datos.message}`);
-                
-                // Reiniciamos el contador de la interfaz
-                feedbackCount.textContent = "0";
-                
-                // Volvemos a deshabilitar el botón hasta juntar otras 5 muestras
-                btnRetrain.style.opacity = "0.5";
-                btnRetrain.style.cursor = "not-allowed";
-                btnRetrain.textContent = "🔄 Disparar Re-entrenamiento";
-            } else {
-                alert(`⚠️ ${datos.message}`);
+            const data = await response.json();
+            actualizarUIAnalisis(data);
+        } catch (error) {
+            mostrarErrorAnalisis(error.message || "Error de red con FastAPI.");
+        }
+    }
+
+    async function enviarFeedbackDirecto(tipo) {
+        try {
+            const response = await fetch('http://127.0.0.1:8000/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_feedback: tipo })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || "Error al registrar feedback.");
+            }
+
+            const data = await response.json();
+            actualizarUIFeedback(data);
+        } catch (error) {
+            alert(`❌ ${error.message}`);
+        }
+    }
+
+    async function reentrenarDirecto() {
+        try {
+            const response = await fetch('http://127.0.0.1:8000/reentrenar', {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || "Error en el re-entrenamiento.");
+            }
+
+            const data = await response.json();
+            actualizarUIReentrenamiento(data);
+        } catch (error) {
+            alert(`❌ ${error.message}`);
+            if (btnRetrain) {
                 btnRetrain.disabled = false;
                 btnRetrain.textContent = "🔄 Disparar Re-entrenamiento";
             }
-        } catch (error) {
-            console.error("Error al re-entrenar:", error);
-            alert("❌ Ocurrió un error de red al intentar re-entrenar.");
-            btnRetrain.disabled = false;
+        }
+    }
+
+    // --- FUNCIONES COMUNES PARA ACTUALIZAR ELEMENTOS DE LA INTERFAZ (DRY) ---
+
+    function actualizarUIAnalisis(data) {
+        if (botonAnalizar) {
+            botonAnalizar.disabled = false;
+            botonAnalizar.textContent = "Analizar Correo";
+        }
+        if (contenedorResultados) contenedorResultados.style.display = "block";
+
+        if (data && data.probabilidad_phishing !== undefined) {
+            const prob = data.probabilidad_phishing;
+            const porcentaje = Math.round(prob * 100);
+
+            // Ancho de la barra de medición
+            if (lineaMedicion) lineaMedicion.style.width = `${porcentaje}%`;
+
+            // Porcentaje del indicador superior
+            if (porcentajeTextoSuperior) {
+                porcentajeTextoSuperior.textContent = `${porcentaje}%`;
+            }
+
+            // Reporte detallado de probabilidad
+            if (resultadoTexto) {
+                resultadoTexto.innerHTML = `<strong>Probabilidad de Phishing:</strong> ${porcentaje}%`;
+            }
+
+            // Cambios de color según el umbral de riesgo
+            if (porcentaje < 30) {
+                if (lineaMedicion) lineaMedicion.style.backgroundColor = "#10b981"; // Verde
+                if (badgeEstado) {
+                    badgeEstado.textContent = "SEGURO";
+                    badgeEstado.style.backgroundColor = "#10b981";
+                }
+            } else if (porcentaje >= 30 && porcentaje < 70) {
+                if (lineaMedicion) lineaMedicion.style.backgroundColor = "#f59e0b"; // Amarillo
+                if (badgeEstado) {
+                    badgeEstado.textContent = "SOSPECHOSO";
+                    badgeEstado.style.backgroundColor = "#f59e0b";
+                }
+            } else {
+                if (lineaMedicion) lineaMedicion.style.backgroundColor = "#ef4444"; // Rojo
+                if (badgeEstado) {
+                    badgeEstado.textContent = "ALERTA DE PHISHING";
+                    badgeEstado.style.backgroundColor = "#ef4444";
+                }
+            }
+        }
+    }
+
+    function mostrarErrorAnalisis(message) {
+        if (botonAnalizar) {
+            botonAnalizar.disabled = false;
+            botonAnalizar.textContent = "Analizar Correo";
+        }
+        if (resultadoTexto) {
+            resultadoTexto.innerHTML = `<span style="color:#e74c3c;">❌ ${message}</span>`;
+        }
+        if (contenedorResultados) contenedorResultados.style.display = "block";
+    }
+
+    function actualizarUIFeedback(data) {
+        // Soporta tanto 'total_feedback' como 'total_feedback_acumulado' para evitar fallos de compatibilidad
+        const total = data.total_feedback_acumulado !== undefined ? data.total_feedback_acumulado : data.total_feedback;
+        if (total !== undefined) {
+            if (feedbackCount) feedbackCount.textContent = total;
+
+            // Habilita el re-entrenamiento solo si alcanzamos el mínimo de 5 muestras
+            if (btnRetrain) {
+                btnRetrain.disabled = total < 5;
+                btnRetrain.style.opacity = total >= 5 ? "1" : "0.5";
+                btnRetrain.style.cursor = total >= 5 ? "pointer" : "not-allowed";
+            }
+        }
+    }
+
+    function actualizarUIReentrenamiento(data) {
+        if (btnRetrain) {
+            btnRetrain.disabled = true;
+            btnRetrain.style.opacity = "0.5";
+            btnRetrain.style.cursor = "not-allowed";
             btnRetrain.textContent = "🔄 Disparar Re-entrenamiento";
         }
-    });
-}
+        if (feedbackCount) feedbackCount.textContent = "0";
 
-// 6. BOTÓN OPCIONAL DE LIMPIAR
-if (botonLimpiar) {
-    botonLimpiar.addEventListener('click', () => {
-        emailInput.value = "";
-        lineaMedicion.style.width = "0%";
-        resultadoTexto.textContent = "Esperando correo para analizar...";
-        if (contenedorResultados) contenedorResultados.style.display = "none";
-    });
-}
+        if (data && data.mensaje) {
+            alert(`✅ ${data.mensaje}`);
+        }
+    }
+
+    // Consulta el contador actual de registros al cargar (Modo Web)
+    async function consultarFeedbackInicial() {
+        if (vscode) return; // Si estamos en VS Code, no hace falta
+        try {
+            // Obtenemos estadísticas iniciales de registros en la DB
+            const response = await fetch('http://127.0.0.1:8000/');
+            if (response.ok) {
+                const data = await response.json();
+                // Si la API retorna estadísticas en el root, inicializamos
+                // (main.py retorna collected_feedback_samples en su diagnóstico, o podemos consultar stats)
+                const statsResponse = await fetch('http://127.0.0.1:8000/stats');
+                if (statsResponse.ok) {
+                    const stats = await statsResponse.json();
+                    if (stats.total_samples !== undefined) {
+                        actualizarUIFeedback({ total_feedback_acumulado: stats.total_samples });
+                    }
+                }
+            }
+        } catch (e) {
+            console.log("Servidor FastAPI local offline o inalcanzable.");
+        }
+    }
+
+});
