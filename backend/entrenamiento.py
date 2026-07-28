@@ -1,15 +1,9 @@
-from pathlib import Path
-
+from pathlib import Path #Rutas
 import joblib
 from sklearn.ensemble import RandomForestClassifier
+from app.caracteristicas import extraccion_caracteristicas
 
-try:
-    from .app.caracteristicas import extraccion_caracteristicas
-except ImportError:
-    from app.caracteristicas import extraccion_caracteristicas
-
-BASE_DIR = Path(__file__).resolve().parent
-# CAMBIO: Unificado de 'modelos' a 'models' para coincidir con la ruta cargada por la API
+BASE_DIR = Path(__file__).resolve().parent #Ubicaion exacta, ruta absoluta, devuelve un nivel 
 MODEL_PATH = BASE_DIR / "models" / "modelo_phishing.pkl"
 
 # PASO 1: Correos de ejemplo con respuestas conocidas ---
@@ -39,7 +33,7 @@ for correo in correos_entrenamiento:
     X.append(fila_numerica)
 
 # PASO 3: crear el clasificador Random Forest vacio
-modelo = RandomForestClassifier(n_estimators=100, random_state=42)
+modelo = RandomForestClassifier(n_estimators=100, random_state=42) # Semilla, precision
 # Entrenamos el modelo 
 modelo.fit(X, Y)
 print("El modelo ha sido entrenado con exito")

@@ -1,14 +1,13 @@
 import joblib
-import os
+from pathlib import Path
 import numpy as np
 
 # Rutas del modelo y datasets
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODELS_DIR = os.path.join(BASE_DIR, "models")
-MODEL_PATH = os.path.join(MODELS_DIR, "modelo_phishing.pkl")
+BASE_DIR = Path(__file__).resolve().parent.parent #Ubicaion exacta, ruta absoluta, devuelve un nivel 
+MODEL_PATH = BASE_DIR / "models" / "modelo_phishing.pkl"
 
 # Carga inicial del modelo
-modelo = joblib.load(MODEL_PATH) if os.path.exists(MODEL_PATH) else None
+modelo = joblib.load(MODEL_PATH) if MODEL_PATH.exists() else None
 
 def predecir_correo(fila_numerica):
     """
@@ -73,7 +72,7 @@ def reentrenar_con_datos(filas_db):
     modelo.fit(X_combinado, y_combinado)
 
     # Guardar cambios actualizados en el archivo .pkl
-    os.makedirs(MODELS_DIR, exist_ok=True)
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(modelo, MODEL_PATH)
 
-    return True, f"Modelo re-entrenado exitosamente combinando {len(filas_db)} muestras de feedback con los datos base."
+    return True, f"Modelo re-entrenado exitosamente combinando {len(filas_db)} muestras de feedback con los datos base."

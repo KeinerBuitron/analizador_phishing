@@ -22,7 +22,6 @@ def extraccion_caracteristicas(email):
     for caracter in email:
         if caracter.isupper():
             contador_mayusculas += 1
-
     largo_total = len(email)
 
     if largo_total > 0:
