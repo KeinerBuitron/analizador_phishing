@@ -1,14 +1,13 @@
 import sqlite3
-import os
+from pathlib import Path
 
 # Determinamos la ruta de la base de datos (backend/data/feedback.db)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_PATH = os.path.join(DATA_DIR, "feedback.db")
+BASE_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = BASE_DIR / "data" / "feedback.db"
 
 def init_db():
     """Crea la carpeta data y la tabla feedback si no existen."""
-    os.makedirs(DATA_DIR, exist_ok=True)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
