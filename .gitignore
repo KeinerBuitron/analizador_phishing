@@ -14,4 +14,4 @@ __pycache__/
 Thumbs.db
 
 # Configuraciones locales de VS Code (Opcional)
-.vscode/
+# .vscode/
